@@ -1,5 +1,4 @@
 const admin = require("../firebase_initialization");
-const storage = admin.storage();
 
 const resolvers = {
   hello: (args,req) => {

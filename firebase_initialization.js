@@ -4,7 +4,6 @@ const serviceAccount = require('./firebase_credentials.json'); // Adjust the pat
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  storageBucket: "temp-projectb-dbb35.appspot.com"
 });
 
 module.exports = admin;

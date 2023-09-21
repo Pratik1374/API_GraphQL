@@ -574,7 +574,6 @@ const resolvers = {
     }
 
     const { post_user_id, post_document_id } = args.deletePostInput;
-    console.log("pdi", post_document_id);
 
     if (post_user_id !== req.user.uid) {
       throw new Error("You can only delete your own posts");
@@ -652,7 +651,6 @@ const resolvers = {
         .doc(post_user_id)
         .collection("Posts")
         .doc(post_document_id);
-      console.log("uid",userUID)
   
       // Reference to the comment document to be deleted
       const commentRef = postRef

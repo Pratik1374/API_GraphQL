@@ -10,6 +10,7 @@ const schema = buildSchema(`
     profile_image: String!
     gender: String
     bio: String
+    timestamp: String
   }
   
   input UserInput {
@@ -39,7 +40,6 @@ const schema = buildSchema(`
     description: String
     output_url: String!
     public: Boolean!
-    timestamp: String!
     ai_model_tags: [String]
   }
 
@@ -53,7 +53,6 @@ const schema = buildSchema(`
     post_user_id: String!  # The UID of the user who posted the original post
     post_document_id: String!  # The document ID of the post being commented on
     comment: String!
-    timestamp: String!  # You can use a scalar like String or DateTime for timestamps
   }
 
   type Like {
@@ -87,7 +86,41 @@ const schema = buildSchema(`
     gender: String
     bio: String
   }
+
+  input UnfollowInput {
+    user_id_to_unfollow: String!
+  }
   
+  type UnfollowResponse {
+    id: String! # ID of the user performing the unfollow operation
+    message: String! # A message indicating the result of the unfollow operation
+  }
+  
+  type RemoveLikeResponse {
+    post_document_id: String!
+    message: String!
+  }  
+
+  input DeletePostInput {
+    post_user_id: String!
+    post_document_id: String!
+  }
+
+  type DeletePostResponse {
+    post_document_id: String!
+    message: String!
+  }
+
+  input DeleteCommentInput {
+    post_user_id: ID!
+    post_document_id: ID!
+    comment_id: ID!
+  }
+  
+  type DeleteCommentResponse {
+    id: ID!
+    message: String!
+  }
 
   type RootQuery {
     hello: String
@@ -103,6 +136,10 @@ const schema = buildSchema(`
     createLike(likeInput: LikeInput): Like
     createFollower(followerInput: FollowerInput): UserStat
     updateUser(updateUserInput: UpdateUserInput): User
+    unfollowUser(unfollowInput: UnfollowInput!): UnfollowResponse
+    removeLike(likeInput: LikeInput!): RemoveLikeResponse
+    deletePost(deletePostInput: DeletePostInput!): DeletePostResponse
+    deleteComment(deleteCommentInput: DeleteCommentInput!): DeleteCommentResponse
   }
   
   schema {

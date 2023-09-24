@@ -24,14 +24,15 @@ const schema = buildSchema(`
   }
 
   type Post {
-    id: ID
-    prompt: String
-    category: String
-    description: String
-    output_url: String
-    public: Boolean
-    timestamp: String
+    id: ID!
+    prompt: String!
+    category: String!
+    description: String!
+    output_url: String!
+    public: Boolean!
+    timestamp: String!
     ai_model_tags: [String]
+    creator_id: String!
   }
 
   input PostInput {
@@ -47,6 +48,7 @@ const schema = buildSchema(`
     id: ID!
     timestamp: String!
     comment: String!
+    commenter_id: String!
   }
 
   input CommentInput {
@@ -57,7 +59,7 @@ const schema = buildSchema(`
 
   type Like {
     id: ID!
-    liked_at: String!
+    timestamp: String!
     user_id: String!
   }
   
@@ -68,6 +70,7 @@ const schema = buildSchema(`
 
   type UserStat {
     id: String!
+    user_id: String!
   }
   
   input FollowerInput {
@@ -75,7 +78,6 @@ const schema = buildSchema(`
   }
 
   input GetSinglePostInput {
-    post_user_id: String!
     post_document_id: String!
   }
 
@@ -112,7 +114,6 @@ const schema = buildSchema(`
   }
 
   input DeleteCommentInput {
-    post_user_id: ID!
     post_document_id: ID!
     comment_id: ID!
   }
@@ -122,11 +123,24 @@ const schema = buildSchema(`
     message: String!
   }
 
+  type GetPostResponse {
+    id: ID
+    prompt: String
+    category: String
+    description: String
+    output_url: String
+    public: Boolean
+    timestamp: String
+    ai_model_tags: [String]
+    creator_id: String
+  }
+
   type RootQuery {
     hello: String
     getSinglePost(singlePostInput: GetSinglePostInput): Post
     getUser: User
     getMyPosts: [Post]
+    getPostsByCreation: [GetPostResponse]
   }
   
   type RootMutation {

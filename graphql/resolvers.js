@@ -78,7 +78,7 @@ const resolvers = {
     }
   },
 
-  ///when user makes a post
+  ///resolver for creating post
   createPost: async (args, req) => {
     if (!req.user) {
       throw new Error("Authentication required to access this resource");
@@ -96,31 +96,36 @@ const resolvers = {
       // Get the user's UID from the authenticated request
       const userUID = req.user.uid;
 
-      // Reference to the user's "Posts" subcollection
-      const initialRef = admin.firestore().collection("All_Posts").doc(userUID);
-      await initialRef.set({
-        id: userUID,
-      }); ///dont keep document empty(if doc is empty issue arrises while deleting)
-
-      // Reference to the user's "Posts" subcollection
-      const userPostsCollectionRef = admin
-        .firestore()
-        .collection("All_Posts")
-        .doc(userUID)
-        .collection("Posts");
+      const firestore = admin.firestore();
 
       const timestamp = new Date().toISOString();
 
-      // Create a new post document with an auto-generated ID within the user's "Posts" subcollection
-      const newPostRef = await userPostsCollectionRef.add({
+      // Create a new post document within the "Posts" collection
+      const newPostRef = await firestore.collection("Posts").add({
         prompt,
         category,
         description,
         output_url,
         public,
-        timestamp,
+        creator_id: userUID, // Store the UID of the post creator
+        timestamp: timestamp,
         ai_model_tags,
-        timestamp,
+      });
+
+      // Create a reference to the "User_Post_Mapping" document for the user
+      const userPostMappingRef = firestore
+        .collection("User_Post_Mapping")
+        .doc(userUID);
+
+      // Set the "dummy" field to true (if not already set)
+      await userPostMappingRef.set({ dummy: true }, { merge: true });
+
+      // Create a subcollection named "PostIds" within the "User_Post_Mapping" document
+      const postIdsCollectionRef = userPostMappingRef.collection("PostIds");
+
+      // Add the new post ID to the "PostIds" subcollection
+      await postIdsCollectionRef.doc(newPostRef.id).set({
+        timestamp: timestamp,
       });
 
       // If successful, return the ID of the created post
@@ -134,7 +139,7 @@ const resolvers = {
     }
   },
 
-  ///when someone comments on particular post
+  ///resolver for creating comment
   createComment: async (args, req) => {
     if (!req.user) {
       throw new Error("Authentication required to access this resource");
@@ -143,7 +148,7 @@ const resolvers = {
     const { post_user_id, post_document_id, comment } = args.commentInput;
 
     if (post_user_id === req.user.uid) {
-      throw new Error("User can't comment on his own post");
+      throw new Error("User can't comment on their own post");
     }
 
     try {
@@ -155,32 +160,26 @@ const resolvers = {
       // Get the user's UID from the authenticated request
       const userUID = req.user.uid;
 
-      // Reference to the user's post document
-      const postRef = admin
-        .firestore()
-        .collection("All_Posts")
-        .doc(post_user_id)
+      const firestore = admin.firestore();
+
+      // Reference to the post's comment subcollection
+      const commentCollectionRef = firestore
         .collection("Posts")
-        .doc(post_document_id);
+        .doc(post_document_id)
+        .collection("Comments");
 
       const timestamp = new Date().toISOString();
 
-      const initialRef = postRef.collection("All_Comments").doc(userUID);
-      await initialRef.set({ id: userUID });
-
       // Create a new comment document with an auto-generated ID within the "Comments" subcollection
-      const commentRef = await postRef
-        .collection("All_Comments")
-        .doc(userUID)
-        .collection("Comments")
-        .add({
-          timestamp,
-          comment,
-        });
+      const newCommentRef = await commentCollectionRef.add({
+        commenter_id: userUID, // Store the UID of the user who commented
+        timestamp,
+        comment,
+      });
 
       // If successful, return the ID of the created comment
       return {
-        id: commentRef.id,
+        id: newCommentRef.id,
         timestamp,
         comment,
       };
@@ -191,7 +190,7 @@ const resolvers = {
     }
   },
 
-  ///when someone like particular post
+  ///resolver for creating like on a post
   createLike: async (args, req) => {
     if (!req.user) {
       throw new Error("Authentication required to access this resource");
@@ -200,34 +199,29 @@ const resolvers = {
     const { post_user_id, post_document_id } = args.likeInput;
 
     if (post_user_id === req.user.uid) {
-      throw new Error("User can't like his own post");
+      throw new Error("User can't like their own post");
     }
 
     try {
       // Get the user's UID from the authenticated request
       const userUID = req.user.uid;
 
-      // Reference to the comment's "Likes" subcollection
-      const likesCollectionRef = admin
-        .firestore()
-        .collection("All_Posts")
-        .doc(post_user_id)
+      const firestore = admin.firestore();
+
+      // Reference to the post's "Likes" subcollection
+      const likesCollectionRef = firestore
         .collection("Posts")
         .doc(post_document_id)
         .collection("Likes");
 
-      // Check if the user has already liked the comment (optional)
+      // Check if the user has already liked the post (optional)
       const existingLikeDoc = await likesCollectionRef.doc(userUID).get();
       if (existingLikeDoc.exists) {
-        throw new Error("User has already liked this comment.");
+        throw new Error("User has already liked this post.");
       }
 
       // Fetch the user's user_id from the "Users" collection
-      const userDoc = await admin
-        .firestore()
-        .collection("Users")
-        .doc(userUID)
-        .get();
+      const userDoc = await firestore.collection("Users").doc(userUID).get();
       if (!userDoc.exists) {
         throw new Error("User not found in the Users collection.");
       }
@@ -235,17 +229,17 @@ const resolvers = {
       const user_id = userDoc.data().user_id; // Get the user_id
 
       // Add a new like document with the current timestamp and user_id
-      const liked_at = new Date().toISOString();
+      const timestamp = new Date().toISOString();
 
       await likesCollectionRef.doc(userUID).set({
-        liked_at,
+        timestamp, // Store the timestamp
         user_id, // Store the user_id
       });
 
       // Return the like document as part of the response
       return {
         id: userUID, // Use the user's UID as the like document ID
-        liked_at,
+        timestamp,
         user_id, // Return the user_id
       };
     } catch (error) {
@@ -255,6 +249,7 @@ const resolvers = {
     }
   },
 
+  ///resolver for creating follower
   createFollower: async (args, req) => {
     if (!req.user) {
       throw new Error("Authentication required to access this resource");
@@ -263,19 +258,20 @@ const resolvers = {
     const { follower_uid } = args.followerInput;
 
     if (follower_uid === req.user.uid) {
-      throw new Error("User can't follow himself");
+      throw new Error("User can't follow themselves");
     }
 
     try {
       // Get the UID of the user who is going to follow
       const userUID = req.user.uid;
 
+      const firestore = admin.firestore();
+
       // Reference to the user's "User_Stat" document
-      const userStatRef = admin
-        .firestore()
-        .collection("User_Stat")
-        .doc(follower_uid);
-      await userStatRef.set({id:follower_uid})
+      const userStatRef = firestore.collection("User_Stat").doc(follower_uid);
+
+      // Set the "dummy" field to true (if not already set)
+      await userStatRef.set({ dummy: true }, { merge: true });
 
       // Reference to the "Followers" subcollection inside the "User_Stat" document
       const followersCollectionRef = userStatRef.collection("Followers");
@@ -283,24 +279,35 @@ const resolvers = {
       // Add new follower
       const following_from = new Date().toISOString();
 
+      // Fetch the user's user_id from the "Users" collection
+      const userDoc = await firestore.collection("Users").doc(userUID).get();
+      if (!userDoc.exists) {
+        throw new Error("User not found in the Users collection.");
+      }
+
+      const user_id = userDoc.data().user_id; // Get the user_id
+
       await followersCollectionRef.doc(userUID).set({
         following_from,
+        user_id, // Store the user_id
       });
 
       // Reference to the user going to follow someone
-      const followedUserStatRef = admin
-        .firestore()
+      const followedUserStatRef = firestore
         .collection("User_Stat")
         .doc(userUID);
-      await followedUserStatRef.set({id:userUID});
+
+      // Set the "dummy" field to true (if not already set)
+      await followedUserStatRef.set({ dummy: true }, { merge: true });
 
       // Reference to the "Following" subcollection inside the followed user's "User_Stat" document
       const followingCollectionRef =
         followedUserStatRef.collection("Following");
 
-      // Add a new document in P2's "Following" collection with the current timestamp
+      // Add a new document in the followed user's "Following" collection with the current timestamp and user_id
       await followingCollectionRef.doc(follower_uid).set({
         following_from,
+        user_id, // Store the user_id
       });
 
       return {
@@ -313,20 +320,18 @@ const resolvers = {
     }
   },
 
-  /// when user clicks on particular post
+  ///resolver for getting particular post
   getSinglePost: async (args, req) => {
     if (!req.user) {
       throw new Error("Authentication required to access this resource");
     }
 
-    const { post_user_id, post_document_id } = args.singlePostInput;
+    const { post_document_id } = args.singlePostInput;
 
     try {
       // Reference to the specific post document
       const postRef = admin
         .firestore()
-        .collection("All_Posts")
-        .doc(post_user_id)
         .collection("Posts")
         .doc(post_document_id);
 
@@ -384,7 +389,7 @@ const resolvers = {
     }
   },
 
-  /// all posts of particular user will be returned
+  ///resolver for getting user's own posts
   getMyPosts: async (args, req) => {
     if (!req.user) {
       throw new Error("Authentication required to access this resource");
@@ -394,18 +399,15 @@ const resolvers = {
     const userUID = req.user.uid;
 
     try {
-      // Reference to the user's "Posts" subcollection
+      // Reference to the user's posts within the "Posts" collection
       const userPostsCollectionRef = admin
         .firestore()
-        .collection("All_Posts")
-        .doc(userUID)
-        .collection("Posts");
-
-      // Query documents and order them by the "timestamp" field in descending order
-      const query = userPostsCollectionRef.orderBy("timestamp", "desc");
+        .collection("Posts")
+        .where("creator_id", "==", userUID) // Filter posts by creator_id
+        .orderBy("timestamp", "desc"); // Order posts by timestamp in descending order
 
       // Execute the query
-      const userPostsSnapshot = await query.get();
+      const userPostsSnapshot = await userPostsCollectionRef.get();
 
       // Map the user's posts to an array
       const userPosts = userPostsSnapshot.docs.map((postDoc) => ({
@@ -526,7 +528,6 @@ const resolvers = {
     }
   },
 
-  /// when user wants to remove like from the post he liked
   // Resolver for removing a like from a post
   removeLike: async (args, req) => {
     if (!req.user) {
@@ -540,8 +541,6 @@ const resolvers = {
       // Reference to the comment's "Likes" subcollection
       const likesCollectionRef = admin
         .firestore()
-        .collection("All_Posts")
-        .doc(post_user_id)
         .collection("Posts")
         .doc(post_document_id)
         .collection("Likes");
@@ -567,60 +566,66 @@ const resolvers = {
     }
   },
 
-  // Resolver for deleting a post
+  ///resolver for deleting post(also all it's comments and likes)
   deletePost: async (args, req) => {
     if (!req.user) {
       throw new Error("Authentication required to access this resource");
     }
 
-    const { post_user_id, post_document_id } = args.deletePostInput;
-
-    if (post_user_id !== req.user.uid) {
-      throw new Error("You can only delete your own posts");
-    }
+    const { post_document_id } = args.deletePostInput;
 
     try {
-      // Get references to the post, comments, and likes
-      const postRef = admin
-        .firestore()
-        .collection("All_Posts")
-        .doc(post_user_id)
-        .collection("Posts")
-        .doc(post_document_id);
+      // Get the user's UID from the authenticated request
+      const userUID = req.user.uid;
 
-      const commentsRef = postRef.collection("All_Comments");
-      const likesRef = postRef.collection("Likes");
+      const firestore = admin.firestore();
 
-      // Delete the post document
-      await postRef.delete();
+      // Reference to the post document
+      const postRef = firestore.collection("Posts").doc(post_document_id);
+
+      // Check if the post exists
+      const postDoc = await postRef.get();
+      if (!postDoc.exists) {
+        throw new Error("Post not found.");
+      }
+
+      const postData = postDoc.data();
+
+      // Check if the user is the creator of the post
+      if (postData.creator_id !== userUID) {
+        throw new Error("You can only delete your own posts");
+      }
+
+      // Reference to the comments subcollection for this post
+      const commentsCollectionRef = postRef.collection("Comments");
 
       // Delete the associated comments
-      const commentDocs = await commentsRef.get();
+      const commentDocs = await commentsCollectionRef.get();
+
       const commentDeletionPromises = [];
 
       commentDocs.forEach(async (commentDoc) => {
-        const subCommentsRef = commentDoc.ref.collection("Comments");
-        const subCommentDocs = await subCommentsRef.get();
-
-        // Delete the comments within the subcollection
-        subCommentDocs.forEach((subCommentDoc) => {
-          commentDeletionPromises.push(subCommentDoc.ref.delete());
-        });
-
         // Delete the main comment document
         commentDeletionPromises.push(commentDoc.ref.delete());
       });
 
+      // Reference to the likes subcollection for this post
+      const likesCollectionRef = postRef.collection("Likes");
+
       // Delete the likes
-      const likeDocs = await likesRef.get();
+      const likeDocs = await likesCollectionRef.get();
+
       const likeDeletionPromises = [];
       likeDocs.forEach((doc) => {
         likeDeletionPromises.push(doc.ref.delete());
       });
 
-      // Wait for all deletions to complete
+      // Wait for all comment and like deletions to complete
       await Promise.all(commentDeletionPromises);
       await Promise.all(likeDeletionPromises);
+
+      // Delete the post document
+      await postRef.delete();
 
       return {
         post_document_id: post_document_id,
@@ -637,48 +642,78 @@ const resolvers = {
     if (!req.user) {
       throw new Error("Authentication required to access this resource");
     }
-  
-    const { post_user_id, post_document_id, comment_id } = args.deleteCommentInput;
-  
+
+    const { post_document_id, comment_id } = args.deleteCommentInput;
+
     try {
       // Get the user's UID from the authenticated request
       const userUID = req.user.uid;
-  
-      // Reference to the user's post document
-      const postRef = admin
-        .firestore()
-        .collection("All_Posts")
-        .doc(post_user_id)
+
+      const firestore = admin.firestore();
+
+      // Reference to the comment document within the post
+      const commentRef = firestore
         .collection("Posts")
-        .doc(post_document_id);
-  
-      // Reference to the comment document to be deleted
-      const commentRef = postRef
-        .collection("All_Comments")
-        .doc(userUID)
+        .doc(post_document_id)
         .collection("Comments")
         .doc(comment_id);
-  
+
       // Check if the comment exists
       const commentDoc = await commentRef.get();
+
       if (!commentDoc.exists) {
-        throw new Error("Comment not found");
+        throw new Error("Comment not found.");
       }
-  
+
+      const commentData = commentDoc.data();
+
+      // Check if the user is the author of the comment
+      if (commentData.commenter_id !== userUID) {
+        throw new Error("You can only delete your own comments");
+      }
+
       // Delete the comment document
       await commentRef.delete();
-  
+
       return {
         id: comment_id,
         message: "Comment has been deleted successfully",
       };
     } catch (error) {
-      // Handle and log errors
       console.error("Error in deleting comment:", error);
+      throw error;
+    }
+  },
+
+  //get posts by according to created time
+  getPostsByCreation: async (args, req) => {
+    try {
+      const limit = 2; // Set the limit for the number of posts to return
+
+      // Reference to the Firestore instance
+      const firestore = admin.firestore();
+
+      // Perform a collection group query to get posts with a limit
+      const querySnapshot = await firestore
+        .collectionGroup("Posts")
+        .orderBy("timestamp", "desc") // Sort by timestamp in descending order (newest first)
+        .limit(limit) // Set the limit on the number of posts
+        .get();
+
+      // Map the query results to an array of posts with user IDs
+      const posts = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        creator_id: doc.ref.parent.parent.id, // Get the user ID from the document's parent
+        ...doc.data(),
+      }));
+
+      return posts; // Return the array of posts
+    } catch (error) {
+      // Handle and log errors
+      console.error("Error in getting posts by creation:", error);
       throw error; // Re-throw the error to propagate it to the client
     }
   },
-  
 };
 
 module.exports = resolvers;

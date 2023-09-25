@@ -685,35 +685,33 @@ const resolvers = {
     }
   },
 
-  //get posts by according to created time
-  getPostsByCreation: async (args, req) => {
+  //resolver to get posts in newest first order
+  getPostsByCreation: async () => {
     try {
-      const limit = 2; // Set the limit for the number of posts to return
-
-      // Reference to the Firestore instance
       const firestore = admin.firestore();
-
-      // Perform a collection group query to get posts with a limit
-      const querySnapshot = await firestore
-        .collectionGroup("Posts")
-        .orderBy("timestamp", "desc") // Sort by timestamp in descending order (newest first)
-        .limit(limit) // Set the limit on the number of posts
-        .get();
-
-      // Map the query results to an array of posts with user IDs
-      const posts = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        creator_id: doc.ref.parent.parent.id, // Get the user ID from the document's parent
-        ...doc.data(),
+  
+      // Reference to the "Posts" collection
+      const postsCollectionRef = firestore.collection("Posts");
+  
+      // Query documents and order them by the "timestamp" field in descending order
+      const query = postsCollectionRef.orderBy("timestamp", "desc").limit(2);
+  
+      // Execute the query
+      const postsSnapshot = await query.get();
+  
+      // Map the posts to an array
+      const posts = postsSnapshot.docs.map((postDoc) => ({
+        id: postDoc.id,
+        ...postDoc.data(),
       }));
-
-      return posts; // Return the array of posts
+  
+      return posts;
     } catch (error) {
-      // Handle and log errors
-      console.error("Error in getting posts by creation:", error);
-      throw error; // Re-throw the error to propagate it to the client
+      console.error("Error in fetching posts by creation:", error);
+      throw error;
     }
   },
+  
 };
 
 module.exports = resolvers;
